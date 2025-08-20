@@ -117,8 +117,38 @@
             
             guides.forEach((guide, index) => {
                 const events = getEvents();
-                const assignedEvents = events.filter(event => event.guideId == guide.id);
+                console.log('가이드:', guide.name, 'ID:', guide.id, 'Type:', typeof guide.id);
+                console.log('모든 행사:', events.map(e => ({name: e.name, guideId: e.guideId, guideIdType: typeof e.guideId})));
+                
+                const assignedEvents = events.filter(event => String(event.guideId) === String(guide.id));
+                console.log('매칭된 행사:', assignedEvents.map(e => e.name));
                 const eventCount = assignedEvents.length;
+                
+                // Calculate last assigned date (most recent completed event end date)
+                let lastAssignedDate = '-';
+                if (assignedEvents.length > 0) {
+                    let latestEndDate = null;
+                    const currentDate = getCurrentDate();
+                    
+                    assignedEvents.forEach(event => {
+                        if (event.period && event.period.includes('-')) {
+                            const parts = event.period.split(' - ');
+                            let endDateStr = parts.length === 2 ? parts[1].trim() : event.period.split('-')[1]?.trim();
+                            const endDate = parseEventDate(endDateStr);
+                            
+                            // Only include events that have ended (current date > event end date)
+                            if (endDate && currentDate > endDate) {
+                                if (!latestEndDate || endDate > latestEndDate) {
+                                    latestEndDate = endDate;
+                                }
+                            }
+                        }
+                    });
+                    
+                    if (latestEndDate) {
+                        lastAssignedDate = latestEndDate.toLocaleDateString('ko-KR').replace(/\. /g, '.').replace(/\.$/, '');
+                    }
+                }
                 
                 const row = tbody.insertRow();
                 row.dataset.guideId = guide.id;
@@ -130,7 +160,7 @@
                     <td>${guide.affiliation}</td>
                     <td>${eventCount || '-'}</td>
                     <td>${guide.npsAverage || '-'}</td>
-                    <td>${guide.lastAssignedDate || '-'}</td>
+                    <td>${lastAssignedDate}</td>
                     <td>
                         <button onclick="event.stopPropagation(); deleteGuide(${guide.id})">삭제</button>
                     </td>
@@ -229,7 +259,7 @@
                         }
                     }
                     
-                    // Calculate review deadline (end date + 14 days)
+                    // Calculate review deadline (end date + 14 days) and aggregation status
                     let reviewDeadline = '-';
                     if (event.period && event.period.includes('-')) {
                         const parts = event.period.split(' - ');
@@ -238,7 +268,14 @@
                         if (endDate) {
                             const deadlineDate = new Date(endDate);
                             deadlineDate.setDate(deadlineDate.getDate() + 14);
+                            deadlineDate.setHours(0, 0, 0, 0);
                             reviewDeadline = deadlineDate.toLocaleDateString('ko-KR').replace(/\. /g, '.').replace(/\.$/, '');
+                            
+                            // Determine aggregation status based on review deadline
+                            const currentDate = getCurrentDate();
+                            if (currentDate >= deadlineDate) {
+                                aggregationStatus = '완료';
+                            }
                         }
                     }
                     
