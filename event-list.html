@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>행사 관리</title>
+    <style>
+        .selected-row {
+            background-color: #e0e0e0;
+        }
+        tr:hover {
+            cursor: pointer;
+            background-color: #f0f0f0;
+        }
+        .participant-section {
+            margin-top: 30px;
+            padding: 20px;
+            border: 1px solid #ccc;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            margin: 0 3px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .badge-test {
+            background-color: #ff6b6b;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>행사 관리</h1>
+    <nav>
+        <a href="index.html">홈으로</a>
+    </nav>
+    
+    <section>
+        <h2>행사 추가</h2>
+        <form id="eventForm">
+            <div>
+                <label for="eventName">행사명:</label>
+                <input type="text" id="eventName" required>
+            </div>
+            <div>
+                <label for="eventPeriod">행사 기간:</label>
+                <input type="text" id="eventPeriod" placeholder="예: 2024.01.01 - 2024.01.07" required>
+            </div>
+            <div>
+                <label for="eventGuide">담당 가이드:</label>
+                <select id="eventGuide" required>
+                    <option value="">선택하세요</option>
+                </select>
+            </div>
+            <button type="submit">추가</button>
+        </form>
+    </section>
+
+    <section>
+        <h2>행사 목록</h2>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>번호</th>
+                    <th>행사명</th>
+                    <th>행사 기간</th>
+                    <th>담당 가이드</th>
+                    <th>참가인원</th>
+                    <th>작업</th>
+                </tr>
+            </thead>
+            <tbody id="eventList"></tbody>
+        </table>
+    </section>
+
+    <section id="participantSection" class="participant-section" style="display: none;">
+        <h2><span id="selectedEventName"></span> - 참가 인원 관리</h2>
+        
+        <div>
+            <h3>참가자 추가</h3>
+            <form id="participantForm">
+                <div>
+                    <label for="participantName">이름:</label>
+                    <input type="text" id="participantName" required>
+                </div>
+                <div>
+                    <label for="participantBirthdate">생년월일:</label>
+                    <input type="date" id="participantBirthdate" required>
+                </div>
+                <div>
+                    <label for="participantType">유형:</label>
+                    <select id="participantType">
+                        <option value="대표예약자">대표예약자</option>
+                        <option value="일행">일행</option>
+                    </select>
+                </div>
+                <div id="representativeSelectDiv" style="display: none;">
+                    <label for="representativeSelect">대표예약자:</label>
+                    <select id="representativeSelect">
+                        <option value="">선택하세요</option>
+                    </select>
+                </div>
+                <button type="submit">추가</button>
+            </form>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <h3>참가자 목록</h3>
+            <table border="1">
+                <thead>
+                    <tr>
+                        <th>번호</th>
+                        <th>이름</th>
+                        <th>생년월일</th>
+                        <th>유형</th>
+                        <th>대표예약자</th>
+                        <th>작업</th>
+                    </tr>
+                </thead>
+                <tbody id="participantList"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <script src="shared.js"></script>
+    <script>
+        let selectedEventId = null;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            addCurrentDateDisplay();
+            loadGuidesToSelect();
+            loadEvents();
+            initializeTestData();
+            
+            document.getElementById('eventForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const selectedGuideOption = document.getElementById('eventGuide').selectedOptions[0];
+                const event = {
+                    id: Date.now(),
+                    name: document.getElementById('eventName').value,
+                    period: document.getElementById('eventPeriod').value,
+                    guideId: document.getElementById('eventGuide').value,
+                    guideName: selectedGuideOption.textContent,
+                    participants: []
+                };
+                
+                addEvent(event);
+                this.reset();
+                loadEvents();
+            });
+
+            document.getElementById('participantForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                if (!selectedEventId) {
+                    alert('행사를 먼저 선택해주세요.');
+                    return;
+                }
+
+                const participantType = document.getElementById('participantType').value;
+                const representativeId = document.getElementById('representativeSelect').value;
+                
+                if (participantType === '일행' && !representativeId) {
+                    alert('대표예약자를 선택해주세요.');
+                    return;
+                }
+
+                const participant = {
+                    id: Date.now(),
+                    name: document.getElementById('participantName').value,
+                    birthdate: document.getElementById('participantBirthdate').value,
+                    type: participantType,
+                    representative: participantType === '일행' ? representativeId : null
+                };
+
+                addParticipantToEvent(selectedEventId, participant);
+                this.reset();
+                loadParticipants();
+            });
+
+            document.getElementById('participantType').addEventListener('change', function() {
+                const repDiv = document.getElementById('representativeSelectDiv');
+                if (this.value === '일행') {
+                    const event = getEvents().find(e => e.id === selectedEventId);
+                    const hasRepresentatives = event && event.participants && 
+                        event.participants.some(p => p.type === '대표예약자');
+                    
+                    if (!hasRepresentatives) {
+                        alert('먼저 대표예약자를 등록해주세요.');
+                        this.value = '대표예약자';
+                        return;
+                    }
+                    
+                    repDiv.style.display = 'block';
+                    loadRepresentatives();
+                } else {
+                    repDiv.style.display = 'none';
+                }
+            });
+        });
+
+        function initializeTestData() {
+            const events = getEvents();
+            if (events.length > 0 && !events[0].participants) {
+                events.forEach(event => {
+                    event.participants = [];
+                });
+                localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+            }
+        }
+
+        function loadGuidesToSelect() {
+            const guides = getGuides();
+            const select = document.getElementById('eventGuide');
+            
+            select.innerHTML = '<option value="">선택하세요</option>';
+            guides.forEach(guide => {
+                const option = document.createElement('option');
+                option.value = guide.id;
+                option.textContent = `${guide.name} (${guide.type})`;
+                select.appendChild(option);
+            });
+        }
+
+        function loadEvents() {
+            const events = getEvents();
+            const tbody = document.getElementById('eventList');
+            tbody.innerHTML = '';
+            
+            events.forEach((event, index) => {
+                const participantCount = event.participants ? event.participants.length : 0;
+                const row = tbody.insertRow();
+                row.dataset.eventId = event.id;
+                row.onclick = function() { selectEvent(event.id); };
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${event.name} <span class="badge badge-test">TEST</span></td>
+                    <td>${event.period}</td>
+                    <td>${event.guideName}</td>
+                    <td>${participantCount}명</td>
+                    <td>
+                        <button onclick="event.stopPropagation(); deleteEvent(${event.id})">삭제</button>
+                    </td>
+                `;
+            });
+        }
+
+        function selectEvent(eventId) {
+            selectedEventId = eventId;
+            const rows = document.querySelectorAll('#eventList tr');
+            rows.forEach(row => row.classList.remove('selected-row'));
+            const selectedRow = document.querySelector(`[data-event-id="${eventId}"]`);
+            if (selectedRow) {
+                selectedRow.classList.add('selected-row');
+            }
+
+            const event = getEvents().find(e => e.id === eventId);
+            document.getElementById('selectedEventName').textContent = event.name;
+            document.getElementById('participantSection').style.display = 'block';
+            
+            loadParticipants();
+        }
+
+        function loadParticipants() {
+            if (!selectedEventId) return;
+            
+            const event = getEvents().find(e => e.id === selectedEventId);
+            const tbody = document.getElementById('participantList');
+            tbody.innerHTML = '';
+
+            if (event.participants && event.participants.length > 0) {
+                event.participants.forEach((participant, index) => {
+                    const row = tbody.insertRow();
+                    const typeEmoji = participant.type === '대표예약자' ? '👑' : '👥';
+                    const representativeName = participant.representative ? 
+                        event.participants.find(p => p.id == participant.representative)?.name || '-' : '-';
+                    
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${participant.name}</td>
+                        <td>${participant.birthdate}</td>
+                        <td>${typeEmoji} ${participant.type}</td>
+                        <td>${representativeName}</td>
+                        <td>
+                            <button onclick="deleteParticipant(${participant.id})">삭제</button>
+                        </td>
+                    `;
+                });
+            }
+        }
+
+        function loadRepresentatives() {
+            if (!selectedEventId) return;
+            
+            const event = getEvents().find(e => e.id === selectedEventId);
+            const select = document.getElementById('representativeSelect');
+            select.innerHTML = '<option value="">선택하세요</option>';
+            
+            if (event.participants) {
+                const representatives = event.participants.filter(p => p.type === '대표예약자');
+                representatives.forEach(rep => {
+                    const option = document.createElement('option');
+                    option.value = rep.id;
+                    option.textContent = rep.name;
+                    select.appendChild(option);
+                });
+            }
+        }
+
+        function addParticipantToEvent(eventId, participant) {
+            const events = getEvents();
+            const event = events.find(e => e.id === eventId);
+            if (event) {
+                if (!event.participants) {
+                    event.participants = [];
+                }
+                event.participants.push(participant);
+                localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+                loadEvents();
+            }
+        }
+
+        function deleteParticipant(participantId) {
+            if (confirm('정말 삭제하시겠습니까?')) {
+                const events = getEvents();
+                const event = events.find(e => e.id === selectedEventId);
+                if (event && event.participants) {
+                    event.participants = event.participants.filter(p => p.id !== participantId);
+                    localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+                    loadParticipants();
+                    loadEvents();
+                }
+            }
+        }
+
+        function deleteEvent(id) {
+            if (confirm('정말 삭제하시겠습니까?')) {
+                removeEvent(id);
+                loadEvents();
+                if (selectedEventId === id) {
+                    selectedEventId = null;
+                    document.getElementById('participantSection').style.display = 'none';
+                }
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>가이드&인솔자 관리</title>
+    <style>
+        .selected-row {
+            background-color: #e0e0e0;
+        }
+        tr:hover {
+            cursor: pointer;
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <h1>가이드&인솔자 관리</h1>
+    <nav>
+        <a href="index.html">홈으로</a>
+    </nav>
+    
+    <section>
+        <h2>가이드/인솔자 추가</h2>
+        <form id="guideForm">
+            <div>
+                <label for="guideName">이름:</label>
+                <input type="text" id="guideName" required>
+            </div>
+            <div>
+                <label for="guideType">유형:</label>
+                <select id="guideType">
+                    <option value="인솔자">인솔자</option>
+                    <option value="가이드">가이드</option>
+                </select>
+            </div>
+            <div>
+                <label for="affiliation">소속:</label>
+                <select id="affiliation" required>
+                    <option value="">선택하세요</option>
+                </select>
+            </div>
+            <button type="submit">추가</button>
+        </form>
+    </section>
+
+    <section>
+        <h2>추가된 가이드&인솔자 목록</h2>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>번호</th>
+                    <th>이름</th>
+                    <th>유형</th>
+                    <th>소속</th>
+                    <th>행사</th>
+                    <th>NPS평균</th>
+                    <th>최근 배정일</th>
+                    <th>작업</th>
+                </tr>
+            </thead>
+            <tbody id="guideList"></tbody>
+        </table>
+        
+        <div style="margin-top: 20px;">
+            <button onclick="showAssignedEvents()">담당행사</button>
+            <button onclick="showEvaluations()">평가 관리</button>
+        </div>
+        
+        <div id="additionalInfo" style="margin-top: 20px;"></div>
+    </section>
+
+    <script src="shared.js"></script>
+    <script>
+        let selectedGuideId = null;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            addCurrentDateDisplay();
+            loadLandOperatorsToSelect();
+            loadGuides();
+            
+            document.getElementById('guideForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const guide = {
+                    id: Date.now(),
+                    name: document.getElementById('guideName').value,
+                    type: document.getElementById('guideType').value,
+                    affiliation: document.getElementById('affiliation').value,
+                    npsAverage: null,
+                    lastAssignedDate: null
+                };
+                
+                addGuide(guide);
+                this.reset();
+                loadGuides();
+            });
+        });
+
+        function loadLandOperatorsToSelect() {
+            const landOperators = getLandOperators();
+            const select = document.getElementById('affiliation');
+            
+            select.innerHTML = '<option value="">선택하세요</option>';
+            landOperators.forEach(operator => {
+                const option = document.createElement('option');
+                option.value = operator.companyName;
+                option.textContent = operator.companyName;
+                select.appendChild(option);
+            });
+        }
+
+        function loadGuides() {
+            const guides = getGuides();
+            const tbody = document.getElementById('guideList');
+            tbody.innerHTML = '';
+            
+            guides.forEach((guide, index) => {
+                const events = getEvents();
+                const assignedEvents = events.filter(event => event.guideId == guide.id);
+                const eventCount = assignedEvents.length;
+                
+                const row = tbody.insertRow();
+                row.dataset.guideId = guide.id;
+                row.onclick = function() { selectGuide(guide.id); };
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${guide.name}</td>
+                    <td>${guide.type}</td>
+                    <td>${guide.affiliation}</td>
+                    <td>${eventCount || '-'}</td>
+                    <td>${guide.npsAverage || '-'}</td>
+                    <td>${guide.lastAssignedDate || '-'}</td>
+                    <td>
+                        <button onclick="event.stopPropagation(); deleteGuide(${guide.id})">삭제</button>
+                    </td>
+                `;
+            });
+        }
+        
+        function selectGuide(guideId) {
+            selectedGuideId = guideId;
+            const rows = document.querySelectorAll('#guideList tr');
+            rows.forEach(row => row.classList.remove('selected-row'));
+            const selectedRow = document.querySelector(`[data-guide-id="${guideId}"]`);
+            if (selectedRow) {
+                selectedRow.classList.add('selected-row');
+            }
+        }
+
+        function deleteGuide(id) {
+            if (confirm('정말 삭제하시겠습니까?')) {
+                removeGuide(id);
+                loadGuides();
+            }
+        }
+
+        function showAssignedEvents() {
+            if (!selectedGuideId) {
+                alert('가이드를 먼저 선택해주세요.');
+                return;
+            }
+            
+            const events = getEvents();
+            const guides = getGuides();
+            const selectedGuide = guides.find(g => g.id === selectedGuideId);
+            const infoDiv = document.getElementById('additionalInfo');
+            
+            if (!selectedGuide) {
+                infoDiv.innerHTML = '<p>선택된 가이드가 없습니다.</p>';
+                return;
+            }
+            
+            const assignedEvents = events.filter(event => event.guideId == selectedGuideId);
+            
+            let html = `<h3>${selectedGuide.name}의 담당행사</h3>`;
+            
+            if (assignedEvents.length === 0) {
+                html += '<p>배정된 행사가 없습니다.</p>';
+            } else {
+                html += `
+                    <table border="1">
+                        <thead>
+                            <tr>
+                                <th>행사명</th>
+                                <th>행사 기간</th>
+                                <th>일정</th>
+                                <th>상태</th>
+                                <th>후기 마감일</th>
+                                <th>집계 상태</th>
+                                <th>참여인원</th>
+                                <th>상세보기</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                assignedEvents.forEach(event => {
+                    const participantCount = event.participants ? event.participants.length : 0;
+                    const schedule = calculateSchedule(event.period);
+                    
+                    // Determine event status based on current date
+                    let eventStatus = '예정';
+                    let aggregationStatus = '대기';
+                    
+                    if (event.period && event.period.includes('-')) {
+                        const parts = event.period.split(' - ');
+                        let startDateStr = parts.length === 2 ? parts[0].trim() : event.period.split('-')[0]?.trim();
+                        let endDateStr = parts.length === 2 ? parts[1].trim() : event.period.split('-')[1]?.trim();
+                        
+                        const startDate = parseEventDate(startDateStr);
+                        const endDate = parseEventDate(endDateStr);
+                        
+                        if (startDate && endDate) {
+                            const eventStartDate = new Date(startDate);
+                            eventStartDate.setHours(0, 0, 0, 0);
+                            const eventEndDate = new Date(endDate);
+                            eventEndDate.setHours(0, 0, 0, 0);
+                            const compareDate = new Date(getCurrentDate());
+                            compareDate.setHours(0, 0, 0, 0);
+                            
+                            if (compareDate < eventStartDate) {
+                                eventStatus = '예정';
+                            } else if (compareDate >= eventStartDate && compareDate < eventEndDate) {
+                                eventStatus = '진행중';
+                            } else if (compareDate >= eventEndDate) {
+                                eventStatus = '종료';
+                            }
+                        }
+                    }
+                    
+                    // Calculate review deadline (end date + 14 days)
+                    let reviewDeadline = '-';
+                    if (event.period && event.period.includes('-')) {
+                        const parts = event.period.split(' - ');
+                        let endDateStr = parts.length === 2 ? parts[1].trim() : event.period.split('-')[1]?.trim();
+                        const endDate = parseEventDate(endDateStr);
+                        if (endDate) {
+                            const deadlineDate = new Date(endDate);
+                            deadlineDate.setDate(deadlineDate.getDate() + 14);
+                            reviewDeadline = deadlineDate.toLocaleDateString('ko-KR').replace(/\. /g, '.').replace(/\.$/, '');
+                        }
+                    }
+                    
+                    html += `
+                        <tr>
+                            <td>${event.name}</td>
+                            <td>${event.period}</td>
+                            <td>${schedule}</td>
+                            <td>${eventStatus}</td>
+                            <td>${reviewDeadline}</td>
+                            <td>${aggregationStatus}</td>
+                            <td>${participantCount}명</td>
+                            <td><button onclick="viewEventDetail(${event.id})">상세보기</button></td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table>';
+            }
+            
+            infoDiv.innerHTML = html;
+        }
+        
+        function viewEventDetail(eventId) {
+            const events = getEvents();
+            const event = events.find(e => e.id === eventId);
+            const infoDiv = document.getElementById('additionalInfo');
+            
+            if (!event) {
+                infoDiv.innerHTML = '<p>행사를 찾을 수 없습니다.</p>';
+                return;
+            }
+            
+            let html = `<h3>${event.name} - 참가자 상세 정보</h3>`;
+            
+            if (!event.participants || event.participants.length === 0) {
+                html += '<p>참가자가 없습니다.</p>';
+            } else {
+                html += `
+                    <table border="1">
+                        <thead>
+                            <tr>
+                                <th>이름</th>
+                                <th>유형</th>
+                                <th>1차 알림톡 발송 여부</th>
+                                <th>2차 알림톡 발송 여부</th>
+                                <th>후기 작성 여부</th>
+                                <th>제출 현황</th>
+                                <th>상태</th>
+                                <th>제출일</th>
+                                <th>업데이트</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                event.participants.forEach(participant => {
+                    const typeEmoji = participant.type === '대표예약자' ? '👑' : '👥';
+                    const firstNotification = participant.firstNotificationSent ? 
+                        `<span style="color: green;">Y</span><br><small>${formatDate(participant.firstNotificationDate)}</small>` : 
+                        '<span style="color: red;">N</span>';
+                    const secondNotification = participant.secondNotificationSent ? 
+                        `<span style="color: green;">Y</span><br><small>${formatDate(participant.secondNotificationDate)}</small>` : 
+                        '<span style="color: red;">N</span>';
+                    const reviewWritten = participant.reviewSubmitted ? 
+                        '<span style="color: green;">작성완료</span>' : 
+                        '<span style="color: red;">미작성</span>';
+                    // Calculate submit status - for representatives, show group completion rate
+                    let submitStatus;
+                    if (participant.type === '대표예약자') {
+                        // Find all participants in this representative's group (including the representative)
+                        const groupMembers = event.participants.filter(p => 
+                            p.id === participant.id || String(p.representative) === String(participant.id)
+                        );
+                        const totalMembers = groupMembers.length;
+                        const submittedMembers = groupMembers.filter(p => p.reviewSubmitted).length;
+                        const completionRate = totalMembers > 0 ? ((submittedMembers / totalMembers) * 100).toFixed(1) : 0;
+                        
+                        if (submittedMembers === totalMembers) {
+                            submitStatus = `<span style="color: green;">${submittedMembers}/${totalMembers} (${completionRate}%)</span>`;
+                        } else if (submittedMembers > 0) {
+                            submitStatus = `<span style="color: orange;">${submittedMembers}/${totalMembers} (${completionRate}%)</span>`;
+                        } else {
+                            submitStatus = `<span style="color: red;">${submittedMembers}/${totalMembers} (${completionRate}%)</span>`;
+                        }
+                    } else {
+                        // For companions, show individual status
+                        submitStatus = participant.reviewSubmitted ? 
+                            '<span style="color: green;">제출완료</span>' : 
+                            '<span style="color: orange;">미제출</span>';
+                    }
+                    const status = getParticipantStatus(participant, event.period);
+                    const submitDate = participant.reviewSubmitted && participant.reviewSubmitDate ? 
+                        formatDate(participant.reviewSubmitDate) : '-';
+                    
+                    // Get last update date
+                    let updateDate = '-';
+                    if (participant.deletedDate) {
+                        updateDate = formatDate(participant.deletedDate);
+                    } else if (participant.lastModifiedDate) {
+                        updateDate = formatDate(participant.lastModifiedDate);
+                    } else if (participant.reviewSubmitDate) {
+                        updateDate = formatDate(participant.reviewSubmitDate);
+                    }
+                    
+                    // Style status based on type
+                    let statusStyle = '';
+                    switch(status) {
+                        case '제출':
+                            statusStyle = 'color: #28a745; font-weight: bold;';
+                            break;
+                        case '수정됨':
+                            statusStyle = 'color: #ffc107; font-weight: bold;';
+                            break;
+                        case '삭제됨':
+                            statusStyle = 'color: #dc3545; font-weight: bold;';
+                            break;
+                        case '평가 완료':
+                            statusStyle = 'color: #6c757d; font-weight: bold;';
+                            break;
+                        case '미제출':
+                            statusStyle = 'color: #999;';
+                            break;
+                    }
+                    
+                    html += `
+                        <tr>
+                            <td>${participant.name}</td>
+                            <td>${typeEmoji} ${participant.type}</td>
+                            <td>${firstNotification}</td>
+                            <td>${secondNotification}</td>
+                            <td>${reviewWritten}</td>
+                            <td>${submitStatus}</td>
+                            <td style="${statusStyle}">${status}</td>
+                            <td>${submitDate}</td>
+                            <td>${updateDate}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table>';
+            }
+            
+            infoDiv.innerHTML = html;
+        }
+        
+        function getParticipantStatus(participant, eventPeriod) {
+            // Use the same logic as review management
+            if (participant.reviewStatus === '삭제됨') return '삭제됨';
+            
+            if (!participant.reviewSubmitted) {
+                return '미제출';
+            }
+            
+            // Check if review deadline has passed (event end + 14 days)
+            if (eventPeriod && eventPeriod.includes('-')) {
+                const parts = eventPeriod.split(' - ');
+                let endDateStr = parts.length === 2 ? parts[1].trim() : eventPeriod.split('-')[1]?.trim();
+                const endDate = parseEventDate(endDateStr);
+                if (endDate) {
+                    const reviewDeadlineDate = new Date(endDate);
+                    reviewDeadlineDate.setDate(reviewDeadlineDate.getDate() + 14);
+                    reviewDeadlineDate.setHours(0, 0, 0, 0);
+                    
+                    const currentDate = getCurrentDate();
+                    
+                    if (currentDate >= reviewDeadlineDate) {
+                        return '평가 완료';
+                    }
+                }
+            }
+            
+            if (participant.reviewStatus === '수정됨') {
+                return '수정됨';
+            }
+            
+            return '제출';
+        }
+        
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        
+        function updateParticipantReview(eventId, participantId) {
+            const events = getEvents();
+            const event = events.find(e => e.id === eventId);
+            const participant = event.participants.find(p => p.id === participantId);
+            
+            if (participant) {
+                if (confirm(`${participant.name}님의 후기를 제출완료로 변경하시겠습니까?`)) {
+                    participant.reviewSubmitted = true;
+                    participant.reviewSubmitDate = new Date().toISOString();
+                    
+                    localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+                    viewEventDetail(eventId);
+                    
+                    alert('상태가 업데이트되었습니다.');
+                }
+            }
+        }
+
+        function showEvaluations() {
+            if (!selectedGuideId) {
+                alert('가이드를 먼저 선택해주세요.');
+                return;
+            }
+            
+            const guides = getGuides();
+            const selectedGuide = guides.find(g => g.id === selectedGuideId);
+            const infoDiv = document.getElementById('additionalInfo');
+            
+            if (!selectedGuide) {
+                infoDiv.innerHTML = '<p>선택된 가이드가 없습니다.</p>';
+                return;
+            }
+            
+            const events = getEvents();
+            const assignedEvents = events.filter(event => String(event.guideId) === String(selectedGuideId));
+            
+            const currentDate = getCurrentDate();
+            
+            // Filter events that have started (where current date is on or after start date)
+            const activeEvents = assignedEvents.filter(event => {
+                if (!event.period || !event.period.includes('-')) return false;
+                
+                // Handle cases like "2025-09-01 - 2025-09-10" or "2025.09.01 - 2025.09.10"
+                const parts = event.period.split(' - ');
+                let startDateStr;
+                
+                if (parts.length === 2) {
+                    // Format: "start - end"
+                    startDateStr = parts[0].trim();
+                } else {
+                    // Fallback: split by first '-' and take everything before
+                    const dashIndex = event.period.indexOf('-');
+                    if (dashIndex === -1) return false;
+                    startDateStr = event.period.substring(0, dashIndex).trim();
+                }
+                
+                const startDate = parseEventDate(startDateStr);
+                if (!startDate) return false;
+                
+                // Reset time for accurate comparison
+                const eventStartDate = new Date(startDate);
+                eventStartDate.setHours(0, 0, 0, 0);
+                const compareDate = new Date(currentDate);
+                compareDate.setHours(0, 0, 0, 0);
+                
+                return compareDate >= eventStartDate;
+            });
+            
+            let html = `<h3>${selectedGuide.name}의 평가 관리</h3>`;
+            
+            if (activeEvents.length === 0) {
+                html += '<p>진행 중인 행사가 없습니다.</p>';
+            } else {
+                html += `
+                    <table border="1">
+                        <thead>
+                            <tr>
+                                <th>행사명</th>
+                                <th>행사 기간</th>
+                                <th>일정</th>
+                                <th>상태</th>
+                                <th>제출자</th>
+                                <th>NPS 평균</th>
+                                <th>작업</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                activeEvents.forEach(event => {
+                    const schedule = calculateSchedule(event.period);
+                    const reviews = getReviews().filter(r => r.eventId === event.id);
+                    const totalParticipants = event.participants ? event.participants.length : 0;
+                    const submittedReviews = reviews.filter(r => r.status !== '삭제됨').length;
+                    const npsSum = reviews.reduce((sum, r) => sum + (r.npsScore || 0), 0);
+                    const npsAverage = submittedReviews > 0 ? (npsSum / submittedReviews).toFixed(1) : '-';
+                    
+                    // Determine status based on current date and event period
+                    let status = '진행중';
+                    if (event.period && event.period.includes('-')) {
+                        const parts = event.period.split(' - ');
+                        let endDateStr = parts.length === 2 ? parts[1].trim() : event.period.split('-')[1]?.trim();
+                        const endDate = parseEventDate(endDateStr);
+                        if (endDate) {
+                            const eventEndDate = new Date(endDate);
+                            eventEndDate.setHours(23, 59, 59, 999);
+                            const compareDate = new Date(currentDate);
+                            compareDate.setHours(0, 0, 0, 0);
+                            
+                            // Calculate review deadline (end date + 14 days)
+                            const reviewDeadlineDate = new Date(endDate);
+                            reviewDeadlineDate.setDate(reviewDeadlineDate.getDate() + 14);
+                            reviewDeadlineDate.setHours(0, 0, 0, 0);
+                            
+                            if (compareDate > eventEndDate) {
+                                if (compareDate >= reviewDeadlineDate) {
+                                    status = '종료';
+                                } else {
+                                    status = '후기 수집중';
+                                }
+                            }
+                        }
+                    }
+                    
+                    html += `
+                        <tr>
+                            <td>${event.name}</td>
+                            <td>${event.period}</td>
+                            <td>${schedule}</td>
+                            <td>${status}</td>
+                            <td>${submittedReviews}/${totalParticipants}</td>
+                            <td>${npsAverage}</td>
+                            <td><button onclick="viewEvaluationDetail(${event.id})">상세보기</button></td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table>';
+            }
+            
+            infoDiv.innerHTML = html;
+        }
+        
+        function parseEventDate(dateStr) {
+            // Handle both formats: 2025.09.10 and 2025-09-10
+            let parts;
+            if (dateStr.includes('.')) {
+                parts = dateStr.split('.');
+            } else if (dateStr.includes('-')) {
+                parts = dateStr.split('-');
+            } else {
+                return null;
+            }
+            
+            if (parts.length !== 3) return null;
+            
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const day = parseInt(parts[2]);
+            
+            return new Date(year, month, day);
+        }
+        
+        function getCurrentDate() {
+            const simulatedDate = localStorage.getItem('simulatedDate');
+            if (simulatedDate) {
+                return new Date(simulatedDate);
+            }
+            return new Date();
+        }
+        
+        function calculateSchedule(period) {
+            if (!period || !period.includes('-')) return '-';
+            
+            // Handle both formats: "start - end" and "start-end"
+            const parts = period.includes(' - ') ? period.split(' - ') : period.split('-');
+            if (parts.length !== 2) return period;
+            
+            const startDate = parseEventDate(parts[0].trim());
+            const endDate = parseEventDate(parts[1].trim());
+            
+            if (!startDate || !endDate) return period;
+            
+            const diffTime = Math.abs(endDate - startDate);
+            const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // 날짜 차이 
+            const nights = totalDays - 1; // 숙박 수 (마지막 날 제외)
+            const days = totalDays; // 여행 일수
+            
+            return `${nights}박 ${days}일`;
+        }
+        
+        function parseEventDate(dateStr) {
+            if (!dateStr) return null;
+            
+            // Handle both formats: 2025.09.10 and 2025-09-10
+            let parts;
+            if (dateStr.includes('.')) {
+                parts = dateStr.split('.');
+            } else if (dateStr.includes('-')) {
+                parts = dateStr.split('-');
+            } else {
+                return null;
+            }
+            
+            if (parts.length !== 3) return null;
+            
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const day = parseInt(parts[2]);
+            
+            return new Date(year, month, day);
+        }
+        
+        function viewEvaluationDetail(eventId) {
+            const events = getEvents();
+            const event = events.find(e => e.id === eventId);
+            const infoDiv = document.getElementById('additionalInfo');
+            
+            if (!event) {
+                infoDiv.innerHTML = '<p>행사를 찾을 수 없습니다.</p>';
+                return;
+            }
+            
+            const reviews = getReviews().filter(r => r.eventId === eventId);
+            
+            let html = `<h3>${event.name} - 평가 상세</h3>`;
+            html += `<p><button onclick="showEvaluations()" style="margin-bottom: 15px;">← 평가 관리로 돌아가기</button></p>`;
+            
+            if (!event.participants || event.participants.length === 0) {
+                html += '<p>참가자가 없습니다.</p>';
+            } else {
+                html += `
+                    <table border="1">
+                        <thead>
+                            <tr>
+                                <th>참가자명</th>
+                                <th>유형</th>
+                                <th>후기 제출</th>
+                                <th>NPS 점수</th>
+                                <th>상태</th>
+                                <th>제출일</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                event.participants.forEach(participant => {
+                    const review = reviews.find(r => r.participantName === participant.name);
+                    const typeEmoji = participant.type === '대표예약자' ? '👑' : '👥';
+                    const hasSubmitted = participant.reviewSubmitted ? '제출' : '미제출';
+                    const npsScore = review ? review.npsScore : '-';
+                    const status = getParticipantStatus(participant, event.period);
+                    const submitDate = participant.reviewSubmitDate ? formatDate(participant.reviewSubmitDate) : '-';
+                    
+                    html += `
+                        <tr>
+                            <td>${participant.name}</td>
+                            <td>${typeEmoji} ${participant.type}</td>
+                            <td>${hasSubmitted}</td>
+                            <td>${npsScore}</td>
+                            <td>${status}</td>
+                            <td>${submitDate}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table>';
+            }
+            
+            infoDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

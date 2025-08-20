@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>후기 작성하기</title>
+    <style>
+        .selected-row {
+            background-color: #e0e0e0;
+        }
+        tr:hover {
+            cursor: pointer;
+            background-color: #f0f0f0;
+        }
+        .review-section {
+            margin-top: 30px;
+            padding: 20px;
+            border: 1px solid #ccc;
+        }
+        .button-group {
+            display: inline-block;
+            margin-left: 10px;
+        }
+        .button-group button {
+            margin: 0 5px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            margin: 0 3px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .badge-sent {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .badge-pending {
+            background-color: #FFC107;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <h1>후기 작성하기</h1>
+    <nav>
+        <a href="index.html">홈으로</a>
+    </nav>
+    
+    <section>
+        <h2>행사 선택</h2>
+        <div>
+            <label for="eventSelect">행사 선택:</label>
+            <select id="eventSelect">
+                <option value="">선택하세요</option>
+            </select>
+        </div>
+    </section>
+
+    <section id="eventDetailSection" style="display: none;">
+        <h2>행사 정보</h2>
+        <table border="1">
+            <tr>
+                <th>행사명</th>
+                <td id="eventName">-</td>
+            </tr>
+            <tr>
+                <th>행사 기간</th>
+                <td id="eventPeriod">-</td>
+            </tr>
+            <tr>
+                <th>일정</th>
+                <td id="eventSchedule">-</td>
+            </tr>
+            <tr>
+                <th>평가 대상 (담당 가이드)</th>
+                <td id="eventGuide">-</td>
+            </tr>
+        </table>
+    </section>
+
+    <section id="participantSection" class="review-section" style="display: none;">
+        <h2>참가자 목록 및 후기 작성하기</h2>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>번호</th>
+                    <th>이름</th>
+                    <th>생년월일</th>
+                    <th>유형</th>
+                    <th>대표예약자</th>
+                    <th>후기 상태</th>
+                    <th>작업</th>
+                </tr>
+            </thead>
+            <tbody id="participantList"></tbody>
+        </table>
+    </section>
+
+    <script src="shared.js"></script>
+    <script>
+        let selectedEventId = null;
+        let currentEvent = null;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            addCurrentDateDisplay();
+            loadEventsToSelect();
+            
+            document.getElementById('eventSelect').addEventListener('change', function() {
+                if (this.value) {
+                    selectEvent(parseInt(this.value));
+                } else {
+                    selectedEventId = null;
+                    currentEvent = null;
+                    document.getElementById('eventDetailSection').style.display = 'none';
+                    document.getElementById('participantSection').style.display = 'none';
+                }
+            });
+        });
+
+        function loadEventsToSelect() {
+            const events = getEvents();
+            const select = document.getElementById('eventSelect');
+            
+            select.innerHTML = '<option value="">선택하세요</option>';
+            events.forEach(event => {
+                // Show all events, even without participants
+                const option = document.createElement('option');
+                option.value = event.id;
+                const participantCount = event.participants ? event.participants.length : 0;
+                option.textContent = `${event.name} (${event.period}) - 참가자 ${participantCount}명`;
+                select.appendChild(option);
+            });
+        }
+
+        function selectEvent(eventId) {
+            selectedEventId = eventId;
+            const events = getEvents();
+            currentEvent = events.find(e => e.id === eventId);
+            
+            if (currentEvent) {
+                displayEventDetails(currentEvent);
+                loadParticipants(currentEvent);
+                
+                document.getElementById('eventDetailSection').style.display = 'block';
+                document.getElementById('participantSection').style.display = 'block';
+            }
+        }
+
+        function displayEventDetails(event) {
+            document.getElementById('eventName').textContent = event.name;
+            document.getElementById('eventPeriod').textContent = event.period;
+            document.getElementById('eventSchedule').textContent = calculateSchedule(event.period);
+            document.getElementById('eventGuide').textContent = event.guideName || '-';
+        }
+
+        function calculateSchedule(period) {
+            if (!period || !period.includes('-')) return '-';
+            
+            // Handle both formats: "start - end" and "start-end"
+            const parts = period.includes(' - ') ? period.split(' - ') : period.split('-');
+            if (parts.length !== 2) return period;
+            
+            const startDate = parseDate(parts[0].trim());
+            const endDate = parseDate(parts[1].trim());
+            
+            if (!startDate || !endDate) return period;
+            
+            const diffTime = Math.abs(endDate - startDate);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const nights = diffDays - 1;
+            const days = diffDays;
+            
+            return `${nights}박 ${days}일`;
+        }
+
+        function parseDate(dateStr) {
+            // Handle both formats: 2025.09.10 and 2025-09-10
+            let parts;
+            if (dateStr.includes('.')) {
+                parts = dateStr.split('.');
+            } else if (dateStr.includes('-')) {
+                parts = dateStr.split('-');
+            } else {
+                return null;
+            }
+            
+            if (parts.length !== 3) return null;
+            
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const day = parseInt(parts[2]);
+            
+            return new Date(year, month, day);
+        }
+
+        function loadParticipants(event) {
+            const tbody = document.getElementById('participantList');
+            tbody.innerHTML = '';
+
+            if (event.participants && event.participants.length > 0) {
+                event.participants.forEach((participant, index) => {
+                    const row = tbody.insertRow();
+                    const typeEmoji = participant.type === '대표예약자' ? '👑' : '👥';
+                    const representativeName = participant.representative ? 
+                        event.participants.find(p => p.id == participant.representative)?.name || '-' : '-';
+                    
+                    let reviewStatus = '';
+                    if (participant.reviewStatus === '삭제됨') {
+                        reviewStatus = '<span class="status-badge" style="background-color: #dc3545; color: white;">삭제됨</span>';
+                    } else if (participant.reviewSubmitted) {
+                        if (participant.reviewStatus === '수정됨') {
+                            reviewStatus = '<span class="status-badge" style="background-color: #ffc107; color: black;">수정됨</span>';
+                        } else {
+                            reviewStatus = '<span class="status-badge badge-sent">제출완료</span>';
+                        }
+                    } else {
+                        reviewStatus = '<span class="status-badge badge-pending">미제출</span>';
+                    }
+                    
+                    // Add notification badges
+                    if (participant.firstNotificationSent) {
+                        reviewStatus += ' <span class="status-badge badge-sent">1차발송</span>';
+                    }
+                    if (participant.secondNotificationSent) {
+                        reviewStatus += ' <span class="status-badge badge-sent">2차발송</span>';
+                    }
+                    if (participant.linkShared) {
+                        reviewStatus += ' <span class="status-badge badge-sent">링크공유됨</span>';
+                    }
+                    
+                    let actionButtons = '';
+                    if (participant.type === '대표예약자') {
+                        // Check if this representative has companions (convert to string for comparison)
+                        const hasCompanions = event.participants.some(p => 
+                            p.type === '일행' && String(p.representative) === String(participant.id)
+                        );
+                        
+                        const firstBtnDisabled = participant.firstNotificationSent ? 'disabled' : '';
+                        const secondBtnDisabled = participant.secondNotificationSent ? 'disabled' : '';
+                        
+                        // Get current date for button control
+                        const currentDate = getCurrentDate();
+                        const eventStartDate = getEventStartDate(currentEvent.period);
+                        const isEventStarted = currentDate >= eventStartDate;
+                        
+                        let reviewButtons = '';
+                        if (participant.reviewSubmitted) {
+                            // Check if within review deadline and not deleted
+                            const canModify = isWithinReviewDeadline(currentEvent.period) && 
+                                            participant.reviewStatus !== '삭제됨';
+                            
+                            if (canModify) {
+                                reviewButtons = `
+                                    <button onclick="editReview(${participant.id})" style="background-color: #ffc107; color: black; margin-right: 5px;">수정</button>
+                                    <button onclick="deleteReview(${participant.id})" style="background-color: #dc3545; color: white; margin-right: 5px;">삭제</button>
+                                `;
+                            } else {
+                                reviewButtons = '<span style="color: #666;">수정/삭제 불가</span>';
+                            }
+                        } else {
+                            // Check if deleted and cannot rewrite
+                            if (participant.reviewStatus === '삭제됨') {
+                                reviewButtons = '<span style="color: #999;">재작성 불가</span>';
+                            } else if (isEventStarted) {
+                                reviewButtons = `<button onclick="openReviewForm(${participant.id})" style="margin-right: 5px;">후기 폼 오픈</button>`;
+                            } else {
+                                reviewButtons = '<span style="color: #999;">행사 시작 후 이용 가능</span>';
+                            }
+                        }
+                        
+                        // Add share link button if has companions and event has started
+                        let shareLinkButton = '';
+                        if (hasCompanions && isEventStarted) {
+                            if (!participant.linkShared) {
+                                shareLinkButton = `<button onclick="shareReviewLink(${participant.id})" style="background-color: #17a2b8; color: white; margin-right: 5px;">후기 링크 공유하기</button>`;
+                            }
+                        }
+                        
+                        // Notification buttons based on date
+                        const eventStartDateMinus1 = new Date(eventStartDate);
+                        eventStartDateMinus1.setDate(eventStartDateMinus1.getDate() - 1);
+                        const canSendFirstNotification = currentDate >= eventStartDateMinus1;
+                        // 2차 알림톡: 행사 시작일 이후 + 후기를 제출하지 않은 경우에만
+                        const canSendSecondNotification = isEventStarted && !participant.reviewSubmitted;
+                        
+                        let notificationButtons = '';
+                        if (canSendFirstNotification) {
+                            notificationButtons += `<button onclick="sendFirstNotification(${participant.id})" ${firstBtnDisabled} style="margin-right: 5px;">1차 알림톡</button>`;
+                        }
+                        if (canSendSecondNotification) {
+                            notificationButtons += `<button onclick="sendSecondNotification(${participant.id})" ${secondBtnDisabled}>2차 알림톡</button>`;
+                        }
+                        
+                        actionButtons = `
+                            <div class="button-group">
+                                ${reviewButtons}
+                                ${shareLinkButton}
+                                ${notificationButtons}
+                            </div>
+                        `;
+                    } else {
+                        // For companions, check if their representative has shared the link (convert to string for comparison)
+                        const representative = event.participants.find(p => String(p.id) === String(participant.representative));
+                        if (representative && representative.linkShared) {
+                            // Get current date for button control
+                            const currentDate = getCurrentDate();
+                            const eventStartDate = getEventStartDate(currentEvent.period);
+                            const isEventStarted = currentDate >= eventStartDate;
+                            
+                            if (participant.reviewSubmitted) {
+                                // Check if within review deadline and not deleted
+                                const canModify = isWithinReviewDeadline(currentEvent.period) && 
+                                                participant.reviewStatus !== '삭제됨';
+                                
+                                if (canModify) {
+                                    actionButtons = `
+                                        <button onclick="editReview(${participant.id})" style="background-color: #ffc107; color: black; margin-right: 5px;">수정</button>
+                                        <button onclick="deleteReview(${participant.id})" style="background-color: #dc3545; color: white;">삭제</button>
+                                    `;
+                                } else {
+                                    actionButtons = '<span style="color: #666;">수정/삭제 불가</span>';
+                                }
+                            } else {
+                                // Check if deleted and cannot rewrite
+                                if (participant.reviewStatus === '삭제됨') {
+                                    actionButtons = '<span style="color: #999;">재작성 불가</span>';
+                                } else if (isEventStarted) {
+                                    actionButtons = `<button onclick="openReviewForm(${participant.id})">후기 폼 오픈</button>`;
+                                } else {
+                                    actionButtons = '<span style="color: #999;">행사 시작 후 이용 가능</span>';
+                                }
+                            }
+                        } else {
+                            actionButtons = '-';
+                        }
+                    }
+                    
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${participant.name}</td>
+                        <td>${participant.birthdate}</td>
+                        <td>${typeEmoji} ${participant.type}</td>
+                        <td>${representativeName}</td>
+                        <td>${reviewStatus}</td>
+                        <td>${actionButtons}</td>
+                    `;
+                });
+            } else {
+                const row = tbody.insertRow();
+                row.innerHTML = '<td colspan="7" style="text-align: center;">참가자가 없습니다.</td>';
+            }
+        }
+
+        function openReviewForm(participantId) {
+            const participant = currentEvent.participants.find(p => p.id === participantId);
+            if (participant) {
+                // Update review status
+                participant.reviewFormOpened = true;
+                updateEventData();
+                
+                // Open review form in new window
+                const url = `review-form.html?eventId=${selectedEventId}&participantId=${participantId}`;
+                window.open(url, '_blank');
+            }
+        }
+
+        function sendFirstNotification(participantId) {
+            const participant = currentEvent.participants.find(p => p.id === participantId);
+            if (participant) {
+                alert(`${participant.name}님에게 1차 알림톡을 발송했습니다.`);
+                
+                // Update notification status
+                participant.firstNotificationSent = true;
+                participant.firstNotificationDate = new Date().toISOString();
+                updateEventData();
+            }
+        }
+
+        function sendSecondNotification(participantId) {
+            const participant = currentEvent.participants.find(p => p.id === participantId);
+            if (participant) {
+                alert(`${participant.name}님에게 2차 알림톡을 발송했습니다.`);
+                
+                // Update notification status
+                participant.secondNotificationSent = true;
+                participant.secondNotificationDate = new Date().toISOString();
+                updateEventData();
+            }
+        }
+
+        function updateEventData() {
+            const events = getEvents();
+            const eventIndex = events.findIndex(e => e.id === selectedEventId);
+            if (eventIndex !== -1) {
+                events[eventIndex] = currentEvent;
+                localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+                loadParticipants(currentEvent);
+            }
+        }
+
+        function editReview(participantId) {
+            const participant = currentEvent.participants.find(p => p.id === participantId);
+            if (!participant || !participant.reviewSubmitted) {
+                alert('제출된 후기가 없습니다.');
+                return;
+            }
+
+            // Check review deadline rule
+            if (!isWithinReviewDeadline(currentEvent.period)) {
+                alert('행사 종료 후 14일이 경과하여 수정할 수 없습니다.');
+                return;
+            }
+
+            if (participant.reviewStatus === '삭제됨') {
+                alert('삭제된 후기는 수정할 수 없습니다.');
+                return;
+            }
+
+            const currentScore = participant.npsScore || 0;
+            const newScore = prompt(`새로운 NPS 점수를 입력하세요 (0-10):\n참가자: ${participant.name}\n현재 점수: ${currentScore}`, currentScore);
+            
+            if (newScore === null) return; // 취소
+            
+            const score = parseInt(newScore);
+            if (isNaN(score) || score < 0 || score > 10) {
+                alert('0부터 10까지의 숫자를 입력해주세요.');
+                return;
+            }
+
+            if (confirm(`${participant.name}님의 NPS 점수를 ${currentScore}에서 ${score}로 변경하시겠습니까?`)) {
+                // Update participant data
+                participant.npsScore = score;
+                participant.reviewSubmitDate = new Date().toISOString();
+                participant.reviewStatus = '수정됨';
+                
+                // Update reviews collection
+                updateReviewScore(selectedEventId, participant.name, score, '수정됨');
+                
+                updateEventData();
+                alert('후기가 수정되었습니다.');
+            }
+        }
+
+        function deleteReview(participantId) {
+            const participant = currentEvent.participants.find(p => p.id === participantId);
+            if (!participant || !participant.reviewSubmitted) {
+                alert('제출된 후기가 없습니다.');
+                return;
+            }
+
+            // Check review deadline rule
+            if (!isWithinReviewDeadline(currentEvent.period)) {
+                alert('행사 종료 후 14일이 경과하여 삭제할 수 없습니다.');
+                return;
+            }
+
+            if (participant.reviewStatus === '삭제됨') {
+                alert('이미 삭제된 후기입니다.');
+                return;
+            }
+
+            if (confirm(`${participant.name}님의 후기를 삭제하시겠습니까?\n삭제 후에는 재작성할 수 없습니다.`)) {
+                // Mark as deleted but keep submitted status for tracking
+                participant.reviewStatus = '삭제됨';
+                participant.deletedDate = new Date().toISOString();
+                
+                // Update review status in reviews collection
+                updateReviewScore(selectedEventId, participant.name, participant.npsScore, '삭제됨');
+                
+                updateEventData();
+                alert('후기가 삭제되었습니다. 재작성은 불가능합니다.');
+            }
+        }
+
+        function updateReviewScore(eventId, participantName, newScore, newStatus) {
+            const reviews = getReviews();
+            const review = reviews.find(r => r.eventId === eventId && r.participantName === participantName);
+            
+            if (review) {
+                if (newScore !== undefined) review.npsScore = newScore;
+                if (newStatus) review.status = newStatus;
+                review.lastModifiedDate = new Date().toISOString();
+                
+                // Preserve writer information if it exists
+                const events = getEvents();
+                const event = events.find(e => e.id === eventId);
+                if (event) {
+                    const participant = event.participants.find(p => p.name === participantName);
+                    if (participant && participant.reviewWriterType) {
+                        review.writerType = participant.reviewWriterType;
+                        if (participant.reviewCompanionName) {
+                            review.companionName = participant.reviewCompanionName;
+                        }
+                    }
+                }
+                
+                localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(reviews));
+            }
+        }
+
+        function removeReviewByParticipant(eventId, participantName) {
+            const reviews = getReviews();
+            const filtered = reviews.filter(r => !(r.eventId === eventId && r.participantName === participantName));
+            localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(filtered));
+        }
+
+        function getEventStartDate(eventPeriod) {
+            if (!eventPeriod || !eventPeriod.includes('-')) return new Date();
+            
+            const parts = eventPeriod.split(' - ');
+            let startDateStr = parts.length === 2 ? parts[0].trim() : eventPeriod.split('-')[0]?.trim();
+            
+            const startDate = parseEventDate(startDateStr);
+            if (startDate) {
+                startDate.setHours(0, 0, 0, 0);
+                return startDate;
+            }
+            return new Date();
+        }
+
+        function parseEventDate(dateStr) {
+            // Handle both formats: 2025.09.10 and 2025-09-10
+            let parts;
+            if (dateStr.includes('.')) {
+                parts = dateStr.split('.');
+            } else if (dateStr.includes('-')) {
+                parts = dateStr.split('-');
+            } else {
+                return null;
+            }
+            
+            if (parts.length !== 3) return null;
+            
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const day = parseInt(parts[2]);
+            
+            return new Date(year, month, day);
+        }
+
+        function getCurrentDate() {
+            const simulatedDate = localStorage.getItem('simulatedDate');
+            if (simulatedDate) {
+                const date = new Date(simulatedDate);
+                date.setHours(0, 0, 0, 0);
+                return date;
+            }
+            const date = new Date();
+            date.setHours(0, 0, 0, 0);
+            return date;
+        }
+
+        function isWithinReviewDeadline(eventPeriod) {
+            if (!eventPeriod || !eventPeriod.includes('-')) return false;
+            
+            const parts = eventPeriod.split(' - ');
+            let endDateStr = parts.length === 2 ? parts[1].trim() : eventPeriod.split('-')[1]?.trim();
+            const endDate = parseEventDate(endDateStr);
+            if (!endDate) return false;
+            
+            // Calculate review deadline: event end date + 14 days
+            // For event 2025-09-10, deadline is 2025-09-24
+            // Reviews can be modified/deleted until 2025-09-23 (before deadline)
+            const reviewDeadlineDate = new Date(endDate);
+            reviewDeadlineDate.setDate(reviewDeadlineDate.getDate() + 14);
+            reviewDeadlineDate.setHours(0, 0, 0, 0);
+            
+            const currentDate = getCurrentDate();
+            
+            // Return true if current date is before deadline (can modify/delete)
+            // Return false if current date is on or after deadline (cannot modify/delete)
+            return currentDate < reviewDeadlineDate;
+        }
+
+        function shareReviewLink(representativeId) {
+            const representative = currentEvent.participants.find(p => p.id === representativeId);
+            if (!representative) {
+                alert('대표예약자를 찾을 수 없습니다.');
+                return;
+            }
+
+            // Check if has companions (convert to string for comparison)
+            const companions = currentEvent.participants.filter(p => 
+                p.type === '일행' && String(p.representative) === String(representativeId)
+            );
+
+            if (companions.length === 0) {
+                alert('일행이 없습니다.');
+                return;
+            }
+
+            if (confirm(`${companions.length}명의 일행에게 후기 링크를 공유하시겠습니까?\n일행: ${companions.map(c => c.name).join(', ')}`)) {
+                // Update representative's linkShared status
+                representative.linkShared = true;
+                representative.linkSharedDate = new Date().toISOString();
+                
+                updateEventData();
+                alert('후기 링크가 일행에게 공유되었습니다.');
+            }
+        }
+    </script>
+</body>
+</html>

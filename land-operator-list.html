@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>랜드사 관리</title>
+</head>
+<body>
+    <h1>랜드사 관리</h1>
+    <nav>
+        <a href="index.html">홈으로</a>
+    </nav>
+    
+    <section>
+        <h2>랜드사 추가</h2>
+        <form id="landOperatorForm">
+            <div>
+                <label for="companyName">회사명:</label>
+                <input type="text" id="companyName" required>
+            </div>
+            <div>
+                <label for="companyType">회사구분:</label>
+                <select id="companyType">
+                    <option value="랜드사">랜드사</option>
+                </select>
+            </div>
+            <button type="submit">추가</button>
+        </form>
+    </section>
+
+    <section>
+        <h2>추가된 랜드사 목록</h2>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>번호</th>
+                    <th>회사명</th>
+                    <th>회사구분</th>
+                    <th>작업</th>
+                </tr>
+            </thead>
+            <tbody id="landOperatorList"></tbody>
+        </table>
+    </section>
+
+    <script src="shared.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            addCurrentDateDisplay();
+            loadLandOperators();
+            
+            document.getElementById('landOperatorForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const landOperator = {
+                    id: Date.now(),
+                    companyName: document.getElementById('companyName').value,
+                    companyType: document.getElementById('companyType').value
+                };
+                
+                addLandOperator(landOperator);
+                this.reset();
+                loadLandOperators();
+            });
+        });
+
+        function loadLandOperators() {
+            const landOperators = getLandOperators();
+            const tbody = document.getElementById('landOperatorList');
+            tbody.innerHTML = '';
+            
+            landOperators.forEach((operator, index) => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${operator.companyName}</td>
+                    <td>${operator.companyType}</td>
+                    <td>
+                        <button onclick="deleteLandOperator(${operator.id})">삭제</button>
+                    </td>
+                `;
+            });
+        }
+
+        function deleteLandOperator(id) {
+            if (confirm('정말 삭제하시겠습니까?')) {
+                removeLandOperator(id);
+                loadLandOperators();
+            }
+        }
+    </script>
+</body>
+</html>

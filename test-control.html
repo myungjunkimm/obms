@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>테스트 제어판</title>
+    <style>
+        .control-panel {
+            background-color: #f8f9fa;
+            border: 2px solid #dc3545;
+            padding: 20px;
+            margin: 20px;
+            border-radius: 8px;
+        }
+        .control-panel h2 {
+            color: #dc3545;
+            margin-top: 0;
+        }
+        .control-group {
+            margin: 15px 0;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .btn {
+            padding: 8px 16px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            color: black;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .current-date {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>테스트 제어판</h1>
+    <nav>
+        <a href="index.html">홈으로</a> | 
+        <a href="review-list.html">후기 작성하기</a> | 
+        <a href="review-management.html">후기 관리</a>
+    </nav>
+
+    <div class="control-panel">
+        <h2>⚠️ 테스트용 날짜 시뮬레이션</h2>
+        <p><strong>주의:</strong> 이 기능은 14일 규칙을 테스트하기 위한 용도입니다.</p>
+        
+        <div class="current-date">
+            <strong>현재 시뮬레이션 날짜:</strong> <span id="currentSimDate">실제 날짜 사용 중</span>
+        </div>
+
+        <div class="control-group">
+            <label>행사 기준 날짜 설정 (2025.09.01 행사 시작일 기준):</label>
+            <input type="range" id="dateSlider" min="-3" max="30" value="0" style="width: 100%;" />
+            <div id="sliderValue">행사 시작일 (2025.09.01)</div>
+            <button class="btn btn-warning" onclick="applySliderDate()">날짜 적용</button>
+        </div>
+
+        <div class="control-group">
+            <button class="btn btn-success" onclick="resetToRealDate()">실제 날짜로 복원</button>
+            <button class="btn btn-danger" onclick="clearAllData()">모든 테스트 데이터 삭제</button>
+        </div>
+
+        <div class="control-group">
+            <label>테스트 행사 생성:</label>
+            <button class="btn btn-success" onclick="createTestEvent()">테스트 행사 생성 (2025.09.01-2025.09.10)</button>
+        </div>
+    </div>
+
+    <div style="margin: 20px; padding: 15px; background-color: #d1ecf1; border-radius: 4px;">
+        <h3>사용법:</h3>
+        <ol>
+            <li>"테스트 행사 생성" 버튼으로 행사를 만듭니다</li>
+            <li>행사에 참가자를 추가하고 후기를 작성합니다</li>
+            <li>위의 날짜 시나리오 버튼을 사용해 14일 규칙을 테스트합니다</li>
+            <li>후기 작성하기/관리 페이지에서 수정/삭제 가능 여부를 확인합니다</li>
+        </ol>
+    </div>
+
+    <script src="shared.js"></script>
+    <script>
+        let simulatedDate = null;
+
+        // Override Date constructor for testing
+        const OriginalDate = Date;
+        window.Date = function(...args) {
+            if (args.length === 0 && simulatedDate) {
+                return new OriginalDate(simulatedDate);
+            }
+            return new OriginalDate(...args);
+        };
+        window.Date.now = function() {
+            return simulatedDate ? new OriginalDate(simulatedDate).getTime() : OriginalDate.now();
+        };
+        window.Date.prototype = OriginalDate.prototype;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            updateCurrentDateDisplay();
+            loadSimulatedDate();
+            setupSlider();
+        });
+
+        function setupSlider() {
+            const slider = document.getElementById('dateSlider');
+            slider.addEventListener('input', function() {
+                updateSliderDisplay();
+            });
+            updateSliderDisplay();
+        }
+
+        function updateSliderDisplay() {
+            const slider = document.getElementById('dateSlider');
+            const days = parseInt(slider.value);
+            const eventStartDate = new OriginalDate('2025-09-01');
+            const eventEndDate = new OriginalDate('2025-09-10');
+            const targetDate = new OriginalDate(eventStartDate);
+            targetDate.setDate(targetDate.getDate() + days);
+            
+            let description = '';
+            if (days < 0) {
+                description = `행사 시작 ${Math.abs(days)}일 전 (${targetDate.toLocaleDateString('ko-KR')})`;
+            } else if (days === 0) {
+                description = `행사 시작일 (${targetDate.toLocaleDateString('ko-KR')})`;
+            } else if (days <= 8) {
+                description = `행사 진행 중 - ${days}일째 (${targetDate.toLocaleDateString('ko-KR')})`;
+            } else if (days === 9) {
+                description = `행사 종료일 (${targetDate.toLocaleDateString('ko-KR')})`;
+            } else if (days <= 23) {
+                const daysAfterEnd = days - 9;
+                description = `행사 종료 ${daysAfterEnd}일 후 - 수정/삭제 가능 (${targetDate.toLocaleDateString('ko-KR')})`;
+            } else {
+                const daysAfterEnd = days - 9;
+                description = `행사 종료 ${daysAfterEnd}일 후 - 수정/삭제 불가 (${targetDate.toLocaleDateString('ko-KR')})`;
+            }
+            
+            document.getElementById('sliderValue').textContent = description;
+        }
+
+        function applySliderDate() {
+            const slider = document.getElementById('dateSlider');
+            const days = parseInt(slider.value);
+            const eventStartDate = new OriginalDate('2025-09-01');
+            const targetDate = new OriginalDate(eventStartDate);
+            targetDate.setDate(targetDate.getDate() + days);
+
+            simulatedDate = targetDate.toISOString();
+            localStorage.setItem('simulatedDate', simulatedDate);
+            updateCurrentDateDisplay();
+            
+            alert(`날짜가 ${targetDate.toLocaleDateString('ko-KR')}로 설정되었습니다.`);
+        }
+
+        function loadSimulatedDate() {
+            const saved = localStorage.getItem('simulatedDate');
+            if (saved) {
+                simulatedDate = saved;
+                updateCurrentDateDisplay();
+            }
+        }
+
+        function updateCurrentDateDisplay() {
+            const display = document.getElementById('currentSimDate');
+            if (simulatedDate) {
+                const date = new OriginalDate(simulatedDate);
+                display.textContent = date.toLocaleDateString('ko-KR') + ' (시뮬레이션)';
+                display.style.color = '#dc3545';
+                display.style.fontWeight = 'bold';
+            } else {
+                display.textContent = '실제 날짜 사용 중';
+                display.style.color = '#28a745';
+                display.style.fontWeight = 'normal';
+            }
+        }
+
+
+        function resetToRealDate() {
+            simulatedDate = null;
+            localStorage.removeItem('simulatedDate');
+            updateCurrentDateDisplay();
+            alert('실제 날짜로 복원되었습니다.');
+        }
+
+        function clearAllData() {
+            if (confirm('모든 테스트 데이터를 삭제하시겠습니까?\n(행사, 가이드, 후기 등 모든 데이터가 삭제됩니다)')) {
+                localStorage.removeItem(STORAGE_KEYS.EVENTS);
+                localStorage.removeItem(STORAGE_KEYS.GUIDES);
+                localStorage.removeItem(STORAGE_KEYS.LAND_OPERATORS);
+                localStorage.removeItem(STORAGE_KEYS.REVIEWS);
+                localStorage.removeItem('simulatedDate');
+                
+                simulatedDate = null;
+                updateCurrentDateDisplay();
+                
+                alert('모든 테스트 데이터가 삭제되었습니다.');
+            }
+        }
+
+        function createTestEvent() {
+            // Create test land operator if not exists
+            const landOperators = getLandOperators();
+            
+            // Create test guide if not exists
+            const guides = getGuides();
+            
+            // Create test event
+            const events = getEvents();
+            const testEvent = {
+                id: Date.now(),
+                name: '테스트 행사 (바르셀로나 여행)',
+                period: '2025.09.01 - 2025.09.10',
+                guideId: guides[0].id,
+                guideName: guides[0].name,
+                participants: [
+                    {
+                        id: Date.now() + 1,
+                        name: '테스트고객1',
+                        birthdate: '1990-01-01',
+                        type: '대표예약자',
+                        representative: null,
+                        reviewSubmitted: false,
+                        reviewStatus: null
+                    },
+                    {
+                        id: Date.now() + 2,
+                        name: '테스트고객2',
+                        birthdate: '1992-02-02',
+                        type: '일행',
+                        representative: Date.now() + 1,
+                        reviewSubmitted: false,
+                        reviewStatus: null
+                    }
+                ]
+            };
+
+            events.push(testEvent);
+            localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+            
+            alert('테스트 행사가 생성되었습니다!\n행사명: 테스트 행사 (바르셀로나 여행)\n기간: 2025.09.01 - 2025.09.10\n참가자: 테스트고객1 (대표예약자), 테스트고객2 (일행)');
+        }
+    </script>
+</body>
+</html>

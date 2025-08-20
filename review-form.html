@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>후기 평가 폼</title>
+    <style>
+        .form-container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .nps-section {
+            margin: 20px 0;
+        }
+        .nps-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin: 20px 0;
+        }
+        .nps-button {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #ddd;
+            background: white;
+            cursor: pointer;
+            border-radius: 50%;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .nps-button:hover {
+            background-color: #f0f0f0;
+        }
+        .nps-button.selected {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .nps-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+        .submit-section {
+            margin-top: 30px;
+            text-align: center;
+        }
+        .submit-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .submit-btn:hover {
+            background-color: #218838;
+        }
+        .submit-btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .back-btn {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .back-btn:hover {
+            background-color: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <h1>후기 평가</h1>
+        
+        <div class="participant-section" style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+            <h3>참가자 정보</h3>
+            <p><strong>참가자:</strong> <span id="participantName" style="font-size: 18px;">-</span></p>
+        </div>
+        
+        <div id="eventInfo">
+            <h3>행사 정보</h3>
+            <p><strong>행사명:</strong> <span id="eventName">-</span></p>
+            <p><strong>행사 기간:</strong> <span id="eventPeriod">-</span></p>
+            <p><strong>평가 대상:</strong> <span id="evaluationTarget">-</span></p>
+        </div>
+
+        <div class="nps-section">
+            <h3>평가</h3>
+            <p><strong>질문:</strong> 이 가이드 서비스를 다른 사람에게 추천하시겠습니까?</p>
+            
+            <div class="nps-buttons" id="npsButtons">
+                <!-- NPS buttons will be generated here -->
+            </div>
+            
+            <div class="nps-labels">
+                <span>전혀 추천하지 않음</span>
+                <span>매우 추천함</span>
+            </div>
+        </div>
+
+        <div class="submit-section">
+            <button class="back-btn" onclick="goBack()">
+                뒤로가기
+            </button>
+            <button class="submit-btn" id="submitBtn" onclick="submitReview()" disabled>
+                평가 제출
+            </button>
+        </div>
+    </div>
+
+    <script src="shared.js"></script>
+    <script>
+        let selectedNPS = null;
+        let currentEventId = null;
+        let currentParticipantId = null;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            addCurrentDateDisplay();
+            // Get URL parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            currentEventId = parseInt(urlParams.get('eventId'));
+            currentParticipantId = parseInt(urlParams.get('participantId'));
+            
+            if (currentEventId && currentParticipantId) {
+                loadEventInfo();
+                generateNPSButtons();
+            } else {
+                alert('잘못된 접근입니다.');
+                window.location.href = 'review-list.html';
+            }
+        });
+
+        function loadEventInfo() {
+            const events = getEvents();
+            const event = events.find(e => e.id === currentEventId);
+            
+            if (event) {
+                document.getElementById('eventName').textContent = event.name;
+                document.getElementById('eventPeriod').textContent = event.period;
+                document.getElementById('evaluationTarget').textContent = event.guideName || '-';
+                
+                const participant = event.participants.find(p => p.id === currentParticipantId);
+                if (participant) {
+                    document.getElementById('participantName').textContent = participant.name;
+                }
+            }
+        }
+
+
+        function generateNPSButtons() {
+            const container = document.getElementById('npsButtons');
+            container.innerHTML = '';
+            
+            for (let i = 0; i <= 10; i++) {
+                const button = document.createElement('button');
+                button.className = 'nps-button';
+                button.textContent = i;
+                button.onclick = () => selectNPS(i);
+                container.appendChild(button);
+            }
+        }
+
+        function selectNPS(score) {
+            selectedNPS = score;
+            
+            // Remove previous selection
+            document.querySelectorAll('.nps-button').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            
+            // Add selection to clicked button
+            event.target.classList.add('selected');
+            
+            // Enable submit button
+            document.getElementById('submitBtn').disabled = false;
+        }
+
+        function submitReview() {
+            if (selectedNPS === null) {
+                alert('점수를 선택해주세요.');
+                return;
+            }
+
+            const events = getEvents();
+            const event = events.find(e => e.id === currentEventId);
+            const participant = event.participants.find(p => p.id === currentParticipantId);
+            
+            if (participant) {
+                // Update participant review status
+                participant.reviewSubmitted = true;
+                participant.reviewSubmitDate = new Date().toISOString();
+                participant.npsScore = selectedNPS;
+                participant.reviewStatus = '제출';
+                
+                // Save to localStorage
+                localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+                
+                // Save to reviews collection
+                saveReview(event, participant, selectedNPS);
+                
+                alert('평가가 제출되었습니다. 감사합니다!');
+                window.location.href = 'review-list.html';
+            }
+        }
+
+        function saveReview(event, participant, npsScore) {
+            const reviews = getReviews();
+            
+            const review = {
+                id: Date.now(),
+                eventId: event.id,
+                eventName: event.name,
+                eventPeriod: event.period,
+                guideName: event.guideName,
+                participantName: participant.name,
+                npsScore: npsScore,
+                submitDate: new Date().toISOString(),
+                status: '제출'
+            };
+            
+            reviews.push(review);
+            localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(reviews));
+        }
+
+        function goBack() {
+            if (confirm('작성 중인 내용이 저장되지 않습니다. 뒤로 가시겠습니까?')) {
+                window.history.back();
+            }
+        }
+    </script>
+</body>
+</html>

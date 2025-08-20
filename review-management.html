@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>후기 관리</title>
+    <style>
+        .selected-row {
+            background-color: #e0e0e0;
+        }
+        tr:hover {
+            cursor: pointer;
+            background-color: #f0f0f0;
+        }
+        .nps-score {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .nps-promoter {
+            background-color: #28a745;
+            color: white;
+        }
+        .nps-passive {
+            background-color: #ffc107;
+            color: black;
+        }
+        .nps-detractor {
+            background-color: #dc3545;
+            color: white;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .status-submitted {
+            background-color: #28a745;
+            color: white;
+        }
+        .status-modified {
+            background-color: #ffc107;
+            color: black;
+        }
+        .status-deleted {
+            background-color: #dc3545;
+            color: white;
+        }
+        .status-completed {
+            background-color: #6c757d;
+            color: white;
+        }
+        .detail-section {
+            margin-top: 30px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>후기 관리</h1>
+    <nav>
+        <a href="index.html">홈으로</a>
+    </nav>
+    
+    <section>
+        <h2>제출된 후기 목록</h2>
+        <table border="1" width="100%">
+            <thead>
+                <tr>
+                    <th>번호</th>
+                    <th>행사명</th>
+                    <th>행사 기간</th>
+                    <th>일정</th>
+                    <th>평가 대상</th>
+                    <th>작성자</th>
+                    <th>NPS 점수</th>
+                    <th>상태</th>
+                    <th>제출일</th>
+                    <th>액션</th>
+                </tr>
+            </thead>
+            <tbody id="reviewList"></tbody>
+        </table>
+    </section>
+
+    <section id="detailSection" class="detail-section" style="display: none;">
+        <h2>후기 상세 정보</h2>
+        <div id="reviewDetail"></div>
+    </section>
+
+    <script src="shared.js"></script>
+    <script>
+        let selectedReviewId = null;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            addCurrentDateDisplay();
+            loadReviews();
+        });
+
+        function loadReviews() {
+            // Update statuses based on current date before loading
+            const reviews = updateReviewStatusBasedOnDate();
+            const tbody = document.getElementById('reviewList');
+            tbody.innerHTML = '';
+            
+            // Filter out deleted reviews from the list
+            const visibleReviews = reviews.filter(r => r.status !== '삭제됨');
+            
+            if (visibleReviews.length === 0) {
+                const row = tbody.insertRow();
+                row.innerHTML = '<td colspan="10" style="text-align: center;">제출된 후기가 없습니다.</td>';
+                return;
+            }
+
+            visibleReviews.forEach((review, index) => {
+                const row = tbody.insertRow();
+                row.dataset.reviewId = review.id;
+                row.onclick = function() { selectReview(review.id); };
+                
+                const schedule = calculateSchedule(review.eventPeriod);
+                const npsClass = getNPSClass(review.npsScore);
+                const submitDate = formatDate(review.submitDate);
+                const currentStatus = getReviewStatus(review);
+                const statusClass = getStatusBadgeClass(currentStatus);
+                
+                // Get writer info from event participants
+                let writerInfo = review.participantName;
+                const events = getEvents();
+                const event = events.find(e => e.id === review.eventId);
+                if (event && event.participants) {
+                    const participant = event.participants.find(p => p.name === review.participantName);
+                    if (participant) {
+                        // Check if someone else wrote on behalf
+                        if (participant.type === '일행') {
+                            const representative = event.participants.find(p => p.id === participant.representative);
+                            if (representative && representative.linkShared) {
+                                writerInfo = '일행 대신 작성';
+                            }
+                        }
+                    }
+                }
+                
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${review.eventName}</td>
+                    <td>${review.eventPeriod}</td>
+                    <td>${schedule}</td>
+                    <td>${review.guideName}</td>
+                    <td>${review.participantName}</td>
+                    <td><span class="nps-score ${npsClass}">${review.npsScore}</span></td>
+                    <td><span class="status-badge ${statusClass}">${currentStatus}</span></td>
+                    <td>${submitDate}</td>
+                    <td>
+                        <button onclick="event.stopPropagation(); viewDetail(${review.id})">상세보기</button>
+                        <button onclick="event.stopPropagation(); deleteReview(${review.id})" style="background-color: #dc3545; color: white;">삭제</button>
+                    </td>
+                `;
+            });
+        }
+
+        function calculateSchedule(period) {
+            if (!period || !period.includes('-')) return '-';
+            
+            const parts = period.split('-');
+            if (parts.length !== 2) return period;
+            
+            const startDate = parseDate(parts[0].trim());
+            const endDate = parseDate(parts[1].trim());
+            
+            if (!startDate || !endDate) return period;
+            
+            const diffTime = Math.abs(endDate - startDate);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const nights = diffDays;
+            const days = diffDays + 1;
+            
+            return `${nights}박 ${days}일`;
+        }
+
+        function parseDate(dateStr) {
+            const parts = dateStr.split('.');
+            if (parts.length !== 3) return null;
+            
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const day = parseInt(parts[2]);
+            
+            return new Date(year, month, day);
+        }
+
+        function getNPSClass(score) {
+            if (score >= 9) return 'nps-promoter';
+            if (score >= 7) return 'nps-passive';
+            return 'nps-detractor';
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('ko-KR');
+        }
+
+        function selectReview(reviewId) {
+            selectedReviewId = reviewId;
+            const rows = document.querySelectorAll('#reviewList tr');
+            rows.forEach(row => row.classList.remove('selected-row'));
+            const selectedRow = document.querySelector(`[data-review-id="${reviewId}"]`);
+            if (selectedRow) {
+                selectedRow.classList.add('selected-row');
+            }
+        }
+
+        function viewDetail(reviewId) {
+            const reviews = getReviews();
+            const review = reviews.find(r => r.id === reviewId);
+            
+            if (!review) {
+                alert('후기를 찾을 수 없습니다.');
+                return;
+            }
+
+            const detailDiv = document.getElementById('reviewDetail');
+            const schedule = calculateSchedule(review.eventPeriod);
+            const npsCategory = getNPSCategory(review.npsScore);
+            const submitDate = formatDate(review.submitDate);
+            const currentStatus = getReviewStatus(review);
+            const statusClass = getStatusBadgeClass(currentStatus);
+            
+            detailDiv.innerHTML = `
+                <table border="1" style="width: 100%;">
+                    <tr>
+                        <th style="width: 150px;">행사명</th>
+                        <td>${review.eventName}</td>
+                    </tr>
+                    <tr>
+                        <th>행사 기간</th>
+                        <td>${review.eventPeriod}</td>
+                    </tr>
+                    <tr>
+                        <th>일정</th>
+                        <td>${schedule}</td>
+                    </tr>
+                    <tr>
+                        <th>평가 대상</th>
+                        <td>${review.guideName}</td>
+                    </tr>
+                    <tr>
+                        <th>작성자명</th>
+                        <td>${review.participantName}</td>
+                    </tr>
+                    <tr>
+                        <th>NPS 점수</th>
+                        <td><span class="nps-score ${getNPSClass(review.npsScore)}">${review.npsScore}/10</span> (${npsCategory})</td>
+                    </tr>
+                    <tr>
+                        <th>제출일시</th>
+                        <td>${submitDate}</td>
+                    </tr>
+                    <tr>
+                        <th>상태</th>
+                        <td><span class="status-badge ${statusClass}">${currentStatus}</span></td>
+                    </tr>
+                </table>
+            `;
+            
+            document.getElementById('detailSection').style.display = 'block';
+        }
+
+        function getNPSCategory(score) {
+            if (score >= 9) return 'Promoter (추천고객)';
+            if (score >= 7) return 'Passive (중립고객)';
+            return 'Detractor (비추천고객)';
+        }
+
+        function getStatusBadgeClass(status) {
+            switch(status) {
+                case '제출': return 'status-submitted';
+                case '수정됨': return 'status-modified';
+                case '삭제됨': return 'status-deleted';
+                case '평가 완료': return 'status-completed';
+                default: return 'status-submitted';
+            }
+        }
+
+        function deleteReview(reviewId) {
+            if (!confirm('정말로 이 후기를 삭제하시겠습니까?')) {
+                return;
+            }
+
+            const reviews = getReviews();
+            const reviewIndex = reviews.findIndex(r => r.id === reviewId);
+            
+            if (reviewIndex === -1) {
+                alert('후기를 찾을 수 없습니다.');
+                return;
+            }
+
+            reviews[reviewIndex].status = '삭제됨';
+            reviews[reviewIndex].deleteDate = new Date().toISOString();
+            
+            localStorage.setItem('reviews', JSON.stringify(reviews));
+            
+            loadReviews();
+            
+            if (document.getElementById('detailSection').style.display === 'block') {
+                const detailReviewId = selectedReviewId;
+                if (detailReviewId === reviewId) {
+                    document.getElementById('detailSection').style.display = 'none';
+                }
+            }
+            
+            alert('후기가 삭제되었습니다.');
+        }
+
+    </script>
+</body>
+</html>
