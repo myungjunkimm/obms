@@ -45,7 +45,10 @@
             </div>
             <div>
                 <label for="eventPeriod">행사 기간:</label>
-                <input type="text" id="eventPeriod" placeholder="예: 2024.01.01 - 2024.01.07" required>
+                <input type="text" id="eventPeriod" placeholder="2025-10-01 - 2025-10-10" required>
+                <button type="button" onclick="fillTestDate()" style="margin-left: 10px; padding: 5px 10px; background-color: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    📝 테스트 날짜 (2025-09-01 ~ 2025-09-10)
+                </button>
             </div>
             <div>
                 <label for="eventGuide">담당 가이드:</label>
@@ -126,6 +129,10 @@
     <script src="shared.js"></script>
     <script>
         let selectedEventId = null;
+
+        function fillTestDate() {
+            document.getElementById('eventPeriod').value = '2025-09-01 - 2025-09-10';
+        }
 
         document.addEventListener('DOMContentLoaded', function() {
             addCurrentDateDisplay();
