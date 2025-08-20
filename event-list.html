@@ -86,6 +86,13 @@
                 <div>
                     <label for="participantName">이름:</label>
                     <input type="text" id="participantName" required>
+                    <div style="margin-top: 5px;">
+                        <button type="button" onclick="fillParticipant('여행자1', '1990-01-15')" style="margin: 2px; padding: 3px 8px; background-color: #28a745; color: white; border: none; border-radius: 3px; font-size: 12px; cursor: pointer;">여행자1</button>
+                        <button type="button" onclick="fillParticipant('여행자2', '1985-07-22')" style="margin: 2px; padding: 3px 8px; background-color: #17a2b8; color: white; border: none; border-radius: 3px; font-size: 12px; cursor: pointer;">여행자2</button>
+                        <button type="button" onclick="fillParticipant('여행자3', '1992-03-08')" style="margin: 2px; padding: 3px 8px; background-color: #ffc107; color: black; border: none; border-radius: 3px; font-size: 12px; cursor: pointer;">여행자3</button>
+                        <button type="button" onclick="fillParticipant('여행자4', '1988-11-30')" style="margin: 2px; padding: 3px 8px; background-color: #dc3545; color: white; border: none; border-radius: 3px; font-size: 12px; cursor: pointer;">여행자4</button>
+                        <button type="button" onclick="fillParticipant('여행자5', '1995-05-17')" style="margin: 2px; padding: 3px 8px; background-color: #6f42c1; color: white; border: none; border-radius: 3px; font-size: 12px; cursor: pointer;">여행자5</button>
+                    </div>
                 </div>
                 <div>
                     <label for="participantBirthdate">생년월일:</label>
@@ -132,6 +139,11 @@
 
         function fillTestDate() {
             document.getElementById('eventPeriod').value = '2025-09-01 - 2025-09-10';
+        }
+
+        function fillParticipant(name, birthdate) {
+            document.getElementById('participantName').value = name;
+            document.getElementById('participantBirthdate').value = birthdate;
         }
 
         document.addEventListener('DOMContentLoaded', function() {
